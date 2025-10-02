@@ -1,6 +1,6 @@
 # Cert Alert
 
-This app continuously scanns [Certificate Transparency (CT) logs](https://certificate.transparency.dev/) for customizable keywords, regular expressions or wildcard patterns, to get alerted when a certificate for your domain is issued. It can be used, for example, to discover subdomains as well.
+This app continuously scans [Certificate Transparency (CT) logs](https://certificate.transparency.dev/) for customizable keywords, regular expressions or wildcard patterns, to get alerted when a certificate for your domain is issued. It can be used, for example, to discover subdomains as well.
 
 It uses [Shoutrrr URLs](https://containrrr.dev/shoutrrr/v0.8/services/overview/) so that you can easily configure the app to use your favourite notification service, or even webhooks / email.
 

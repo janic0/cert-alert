@@ -1,6 +1,5 @@
 FROM golang:1.22.0-alpine3.19 AS builder
 
-RUN apk update && apk add --no-cache git && apk add ca-certificates
 RUN apk --update add ca-certificates
 WORKDIR $GOPATH/src/janic0/cert-alert/
 COPY . .
