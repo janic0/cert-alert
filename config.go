@@ -136,7 +136,7 @@ func LoadConfig(yamlBytes []byte) (*Config, error) {
 
 		switch {
 		case hasRegex && hasQuery:
-			return nil, fmt.Errorf("watcher[%d]: provide only one of 'regexp' or 'query', not both", i)
+			return nil, fmt.Errorf("watcher[%d]: provide only one of 'regexp' or 'glob', not both", i)
 
 		case hasRegex:
 			re, err := regexp.Compile(w.RegexpRaw)
