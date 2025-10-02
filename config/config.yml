@@ -1,0 +1,16 @@
+prometheus:
+  enabled: true
+
+logCollection:
+  logRenewalInterval: 10s
+  maxHandleableLogGap: 10000000
+
+  googleLogListURL: https://www.gstatic.com/ct/log_list/v3/log_list.json
+
+watchers:
+  - glob: "*.example.com"
+    notifiers:
+      - shoutrrrURL: mock://you-should-change-this
+  - regexp: "[A-Za-z]+.example"
+    notifiers:
+      - shoutrrrURL: mock://you-should-change-this
