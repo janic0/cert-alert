@@ -316,7 +316,7 @@ func main() {
 
 	// monitor amount of buffered items
 	promauto.NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "certalert__instruction_channel_buffered_items",
+		Name: "certalert_instruction_channel_buffered_items",
 		Help: "The amount of batches currently waiting to be completed",
 	}, func() float64 {
 		return float64(len(notifyInstructionChannel))

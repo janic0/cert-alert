@@ -67,13 +67,13 @@ go build . -t cert-alert
 
 ### Docker Compose
 
-```compose
+```yaml
 services:
-    cert-alert:
-        image: ghcr.io/janic0/cert-alert
-        volumes:
-            - ./config:/app/config
-        restart: unless-stopped
+  cert-alert:
+    image: ghcr.io/janic0/cert-alert:latest
+    volumes:
+      - ./config:/app/config
+    restart: unless-stopped
 ```
 
 ### Instrumentation
