@@ -215,7 +215,6 @@ func main() {
 		panic(fmt.Errorf("failed to read config/config.yml: %s", err.Error()))
 	}
 
-	lastTreeSizes := sync.Map{}
 	ctx, cancel := context.WithCancel(context.TODO())
 
 	sigChan := make(chan os.Signal, 1)
@@ -289,14 +288,34 @@ func main() {
 						entry.Certificate.SerialNumber,
 					)
 
-					for _, watcher := range entry.Watchers {
-						errors := watcher.Notify(title, message)
-						for _, err := range errors {
-							if err == nil {
-								continue
-							}
-							fmt.Println("failed to notify watcher", err)
+					coveredWatchers := map[int]bool{}
 
+					for _, watcher := range entry.Watchers {
+
+						if _, isCovered := coveredWatchers[watcher.id]; isCovered {
+							continue
+						}
+
+						coveredWatchers[watcher.id] = true
+
+						for retryCount := 0; retryCount < 3; retryCount++ {
+
+							errors := watcher.Notify(title, message)
+							noErrors := true
+
+							for _, err := range errors {
+								if err == nil {
+									continue
+								}
+								noErrors = false
+								fmt.Println("failed to notify watcher", err)
+
+							}
+
+							if noErrors {
+								// stop retrying
+								break
+							}
 						}
 
 					}
@@ -324,6 +343,7 @@ func main() {
 
 	lockMap := map[string]*sync.Mutex{}
 	failureStreak := sync.Map{}
+	lastTreeSizes := sync.Map{}
 
 	for {
 
@@ -377,7 +397,11 @@ func main() {
 					})
 				}
 
-				for _, log := range logUpdate.Logs {
+				handledLogIDs := map[string]bool{}
+
+				for _, log := range logsToUpdate {
+
+					handledLogIDs[log.LogID] = true
 
 					mutex, hasMutex := lockMap[log.LogID]
 					if !hasMutex {
@@ -416,6 +440,23 @@ func main() {
 					}()
 
 				}
+
+				lastTreeSizes.Range(func(key, _ any) bool {
+
+					switch key.(type) {
+					case string:
+						{
+							isStillNeeded := handledLogIDs[key.(string)]
+							if !isStillNeeded {
+								lastTreeSizes.Delete(key)
+								failureStreak.Delete(key)
+							}
+						}
+					}
+
+					return true
+
+				})
 
 				prometheusIterationCount.Inc()
 

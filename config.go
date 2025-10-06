@@ -65,6 +65,7 @@ type WatcherConfig struct {
 	RegexpRaw string           `yaml:"regexp"` // raw regular expression
 	Notifiers []NotifierConfig `yaml:"notifiers"`
 
+	id     int `yaml:"-"`
 	sender *router.ServiceRouter
 	kind   patternKind    `yaml:"-"`
 	re     *regexp.Regexp `yaml:"-"`
@@ -130,6 +131,8 @@ func LoadConfig(yamlBytes []byte) (*Config, error) {
 	}
 	for i := range cfg.Watchers {
 		w := &cfg.Watchers[i]
+
+		w.id = i
 
 		hasRegex := strings.TrimSpace(w.RegexpRaw) != ""
 		hasQuery := strings.TrimSpace(w.Glob) != ""
