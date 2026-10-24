@@ -1,0 +1,129 @@
+# Multi-arch build -> ghcr.io
+#
+# Added alongside the existing deploy.yml deliberately: that one keeps pushing
+# single-arch amd64 to reg.janic.io for the legacy host, while this publishes
+# linux/amd64 + linux/arm64 to ghcr.io for the new ARM server. Both run until
+# the migration completes, then deploy.yml can go.
+#
+# One job PER PLATFORM, then a manifest merge - not a single job with
+# `platforms: linux/amd64,linux/arm64`. That matters: several of these
+# Dockerfiles use `--mount=type=cache,id=pnpm`, and with both platforms in one
+# build the two stages contend over the same cache directory, which fails as a
+# confusing `ERR_PNPM_IGNORED_BUILDS`. Separate runners get separate caches.
+# It is also roughly twice as fast, and lets public repos move to native ARM
+# runners later by changing one line.
+name: build-ghcr
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+          - platform: linux/arm64
+            arch: arm64
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # OCI reference names must be lowercase, but github.repository preserves
+      # the owner's case - so `Hexaforge/sbi` produced
+      # "invalid reference format: repository name must be lowercase".
+      # Harmless for already-lowercase repos.
+      - name: Lowercase the image name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+
+      # Only needed for the non-native platform. Harmless on amd64.
+      - uses: docker/setup-qemu-action@v4
+        if: matrix.arch == 'arm64'
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          # Push by digest only; the merge job assembles the tags.
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          echo -n "${{ steps.build.outputs.digest }}" > "/tmp/digests/${{ matrix.arch }}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digest-${{ matrix.arch }}
+          path: /tmp/digests/*
+          retention-days: 1
+
+  merge:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Lowercase the image name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long
+
+      - name: Create and push the manifest list
+        run: |
+          cd /tmp/digests
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '${{ steps.meta.outputs.json }}') \
+            $(for f in *; do echo -n "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@$(cat "$f") "; done)
+
+      # The digest of the MANIFEST LIST is what gets pinned in janic0/infra.
+      # Tags are mutable and ci/check-pins.sh rejects anything not digest-pinned.
+      - name: Print the digest to pin
+        run: |
+          D=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest --format '{{.Manifest.Digest}}')
+          echo "::notice title=Pin this::${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@$D"
+          echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@$D"
